@@ -35,40 +35,10 @@ typedef struct BlockStruct{
 } blockstruct;
 
 bool collides(struct Rectangle a, struct Rectangle b);
-
-//int collisionside(struct Rectangle a, struct Rectangle b)
-//{
-//	//True if side col. False if top/bottom collision. b should not be the ball.
-//	//See the collision area png for colour context
-//	int returnvalue;
-//	float bw = (float)(b.width / 2.0f);
-//	float bh = (float)(b.height / 2.0f);
-//	float dx = (float)(abs(a.x - b.x) - bw);
-//	float dy = (float)(abs(a.y - b.y) - bh);
-//	if(dx > dy)
-//	{
-//		// Blue and Magenta
-//		returnvalue = 0;
-//		if(dx >= 0 && dy >= 0)
-//		{
-//			//Magenta
-//			returnvalue = 1; 
-//		}
-//	} else
-//	{
-//		//Green and Yellow
-//		returnvalue = 2;
-//		if(dx >= 0 && dy >= 0)
-//		{
-//			//Yellow
-//			returnvalue = 3;	
-//		}
-//	} 
-//	printf("%d\n", returnvalue);
-//	return returnvalue;
-//	
-//}
-void brickballcollision(blockstruct * a, ballstruct * ball);
+float map(float src, int srclowerbound, int srcupperbound, int destlowerbound, int destupperbound);
+int collisionside(struct Rectangle a, struct Rectangle b);
+void brickballcollision(blockstruct * a, ballstruct * ball, ballstruct * oldball);
+float vecdistance(Vector2 a, Vector2 b);
 int main()
 {
 	int nCountX, nCountY; 
@@ -129,7 +99,7 @@ int main()
 				case '$':
 					Block[nArrIndex].cBlockType = '$';
 					Block[nArrIndex].hitstokill = 5;
-					Block[nArrIndex].blockcolor = GREEN;
+					Block[nArrIndex].blockcolor = LIME;
 					break;
 				default:
 					Block[nArrIndex].cBlockType = '.';
@@ -147,6 +117,7 @@ int main()
 	Bat.fSpeed = 10.0f;
 	
 	ballstruct Ball;
+	ballstruct OldBall;
 	Ball.Rect.x = (float)GameWindow.width / 2.0f;
 	Ball.Rect.y = (float)GameWindow.height / 2.0f + 150.0f;
 	Ball.Rect.width = 16.0f;
@@ -165,7 +136,10 @@ int main()
 	while(!WindowShouldClose())
 	{
 		OldBat.Rect.x = Bat.Rect.x;
-		OldBat.Rect.y = Bat.Rect.y;
+		
+		
+		
+		
 		
 		if(IsKeyDown(KEY_RIGHT)) 
 		{
@@ -178,22 +152,26 @@ int main()
 			if(!collides(Bat.Rect, GameWindow)) Bat.Rect.x += Bat.fSpeed;
 		}
 		
+		OldBall.Rect.x = Ball.Rect.x;
+		OldBall.Rect.y = Ball.Rect.y;
+		
 		Ball.Rect.x += Ball.D.x * Ball.fSpeed;
 		Ball.Rect.y += Ball.D.y * Ball.fSpeed;
 		
 		
 		if(!collides(Ball.Rect, GameWindow))
 		{
-			if((Ball.Rect.x > GameWindow.width || Ball.Rect.x < GameWindow.x) && Ball.Rect.y < GameWindow.height)
+			if((Ball.Rect.x + Ball.Rect.width > GameWindow.width || Ball.Rect.x < GameWindow.x))
 			{
 				Ball.D.x *= -1;
 			}
-			else if (Ball.Rect.y < GameWindow.y && Ball.Rect.x < GameWindow.width)
+			if (Ball.Rect.y < GameWindow.y)
 			{
 				Ball.D.y *= -1;
-			} 
-			else {
-				
+			}
+			 
+			if(Ball.Rect.y + Ball.Rect.height > GameWindow.height) {
+				printf("Game Over.\n");
 				bGameOver = true;
 			}  
 		}
@@ -223,11 +201,13 @@ int main()
 						}
 						
 					} 
+					Ball.Rect.x = OldBall.Rect.x;
+					Ball.Rect.y = OldBall.Rect.y;
 					
                     printf("%f\n", Ball.D.x);
                 }
 		}
-		brickballcollision(Block, &Ball);
+		brickballcollision(Block, &Ball, &OldBall);
 		
 		if(bGameOver)
 		{
@@ -268,7 +248,13 @@ bool collides(struct Rectangle a, struct Rectangle b)
 			a.y + a.height > b.y);
 }
 
-void brickballcollision(blockstruct * a, ballstruct * ball)
+
+float map(float src, int srclwrbound, int srcupprbound, int dstlwrbound, int dstupprbound)
+{
+	return (src - srclwrbound) * (dstupprbound - dstlwrbound) / (srcupprbound - srclwrbound) + dstlwrbound;
+}
+
+void brickballcollision(blockstruct * a, ballstruct * ball, ballstruct * oldball)
 {
 	int counter;
 	for(counter = 0; counter < MAXBLOCKSX * MAXBLOCKSY; counter++)
@@ -280,7 +266,42 @@ void brickballcollision(blockstruct * a, ballstruct * ball)
 			{
 				a[counter].cBlockType = '.';
 			} else{
-				if(ball->D.y < 0)ball->D.y *= -1;
+				switch(a[counter].hitstokill)
+				{
+					case 1:
+						a[counter].blockcolor = GREEN;
+						break;
+					case 2:
+						a[counter].blockcolor = RED;
+						break;
+					case 3:
+						a[counter].blockcolor = BLUE;
+						break;
+					case 4:
+						a[counter].blockcolor = PURPLE;
+						break;
+				}
+				int colside = collisionside(ball->Rect, a[counter].Rect);
+				switch(colside)
+				{
+					case 0:
+						ball->D.x *= -1;
+						break;
+					case 1:
+						ball->D.x *= -1;
+						ball->D.y *= -1;
+						break;
+					case 2:
+						ball->D.y *= -1;
+						break;
+					case 3:
+						ball->D.x *= -1;
+						ball->D.y *= -1;
+						break;
+				}
+				//if(ball->D.y < 0)ball->D.y *= -1;
+				ball->Rect.x = oldball->Rect.x;
+				ball->Rect.y = oldball->Rect.y;
 			}
 			
 			
@@ -289,10 +310,43 @@ void brickballcollision(blockstruct * a, ballstruct * ball)
 	
 }
 
+int collisionside(struct Rectangle a, struct Rectangle b)
+{
+	// b should not be the ball.
+	//See the collision area png for colour context
+	int returnvalue;
+	float bw = (float)(b.width / 2.0f);
+	float bh = (float)(b.height / 2.0f);
+	float dx = (float)(abs(a.x - b.x) - bw);
+	float dy = (float)(abs(a.y - b.y) - bh);
+	if(dx > dy)
+	{
+		// Blue and Magenta
+		returnvalue = 0;
+		if(dx >= 0 && dy >= 0)
+		{
+			//Magenta
+			returnvalue = 1; 
+		}
+	} else
+	{
+		//Green and Yellow
+		returnvalue = 2;
+		if(dx >= 0 && dy >= 0)
+		{
+			//Yellow
+			returnvalue = 3;	
+		}
+	} 
+	printf("%d\n", returnvalue);
+	return returnvalue;
+	
+}
 
-
-
-
+float vecdistance(Vector2 a, Vector2 b)
+{
+	return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+}
 
 
 
