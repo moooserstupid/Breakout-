@@ -12,14 +12,19 @@
 #define SCREENHEIGHT 700
 
 #define DEFAULT_FONT_SIZE 60
+#define MAX_NAME_LENGTH 10
 
-enum states{ACTIVE, GAMEOVER, PAUSED, MENU, CREDITS};
+enum states{ACTIVE, GAMEOVER, YOUWIN, PAUSED, MENU, HIGHSCORE, CREDITS};
 
 typedef struct Pair{
 	int index;
 		
 	float time;
 } pair;
+typedef struct Players{
+	char name[MAX_NAME_LENGTH];
+	int score;
+} players;
 
 typedef struct BatStruct{
 	Rectangle rect;
@@ -32,6 +37,7 @@ typedef struct BlockStruct{
 	Color colour;
 	bool active;
 	int hitstokill;
+	int reward;
 } blockstruct;
 
 typedef struct BallStruct{
@@ -43,7 +49,7 @@ typedef struct BallStruct{
 	int lives;
 } ballstruct;
 
-struct Dimensions
+typedef struct Dimensions
 {
     // real screen coordinates
     float width;
@@ -59,30 +65,37 @@ struct Dimensions
 
     //default font size (scaled)
     float font_size;
-};
+} dimensions;
 
 bool RayVsRect(Vector2, Vector2, Rectangle, Vector2 *, Vector2 *, float *);
 bool DynamicRectVsRect(Rectangle, Rectangle, Vector2, Vector2 *, Vector2 *, float *, float);
 bool ResolveDynamicRectVsRect(ballstruct *, const float, blockstruct *, float);
 bool RectVsRectAABB(Rectangle, Rectangle);
 
-void swap(void *, void *, size_t);
-int compare(const void *, const void *);
-//static int max_blocks = MAXBLOCKSX * MAXBLOCKSY;
+//Various helper functions
+static void swap(void *, void *, size_t);
+static int compare(const void *, const void *);
+static char *readfile(const char *, int *, int *);
+static void findfileDim(FILE *, int *, int *);
+static float mapf(float, float, float, float, float);
+static players* GetSortedScores(const char *);
+static void addScore(const char *, char *, int); 
 
 //Declaration of the game structs
 static blockstruct *block;
 static ballstruct ball;
 static batstruct bat;
 static Rectangle bat_bounds;
-static struct Dimensions screen;
-
+static dimensions screen;
+static players player; 
 
 //Declaration of game state enum
 static enum states GAME_STATE;
 
 //Declaration of Texture data
-static Texture2D menubuttons[3];
+static Texture2D menubuttons[4];
+static Texture2D spacebarlogo;
+static Texture2D enterbuttonlogo;
 
 //Declaration of variables needed in multiple functions
 static int MAXBLOCKSX;
@@ -96,6 +109,7 @@ static float round_time;
 static int max_time;
 static int max_active_blocks;
 static int active_blocks_count;
+static int letterCount;
 
 //Declaration of sfx
 static Sound sfxGameOver;
@@ -106,14 +120,15 @@ static Sound sfxWallCollision;
 //static void IntroScreen(void);
 static void MainMenuState(void);
 static void GameOverState(void);
+static void WinState(void);
 static void PauseState(void);
 static void CreditsState(void);
+static void HighScoreState(void);
 static void InitGame(void);
 static void UpdateGame(void);
 static void DrawGame(void);
 static void UnloadGame(void);
-static char *readfile(const char *, int *, int *);
-static void findfileDim(FILE *, int *, int *);
+
 
 int main()
 {
@@ -142,6 +157,12 @@ int main()
 			case CREDITS:
 				CreditsState();
 				break;
+			case YOUWIN:
+				WinState();
+				break;
+			case HIGHSCORE:
+				HighScoreState();
+				break;
 		}
 	}
 	UnloadGame();
@@ -159,17 +180,22 @@ void MainMenuState(void)
 	const char * BreakoutChar = TextFormat("Breakout");
 	int BreakoutSize = MeasureText(BreakoutChar, 60);
 	DrawText(BreakoutChar, ((screen.virtual_width) / 2 - BreakoutSize) * screen.scale_x, ((screen.virtual_height)/ 2 - BreakoutSize) * screen.scale_y, 60, BLACK);
-	for(count = 0; count < 3; count++)
+	for(count = 0; count < 4; count++)
 	{
-		Vector2 button_pos = (Vector2){(screen.virtual_width / 2 - menubuttons[count].width) * screen.scale_x + 10.0f, (((screen.virtual_height / 2 - menubuttons[count].height) / 2) + count * 200) * screen.scale_y + BreakoutSize  / 2};
+		Vector2 button_pos = (Vector2){(screen.virtual_width / 2 - menubuttons[count].width) * screen.scale_x - 20.0f, (((screen.virtual_height / 2 - menubuttons[count].height) / 2) + count * 150) * screen.scale_y + BreakoutSize  / 2};
 		Rectangle button_bounds = {button_pos.x, button_pos.y, menubuttons[count].width * (screen.scale_x + 1.0f), menubuttons[count].height * (screen.scale_x + 1.0f)};
 		if(CheckCollisionPointRec(GetMousePosition(), button_bounds))
 		{
 			button_pos.x -= 10 * screen.scale_x;
-			DrawTextureEx(menubuttons[count], button_pos, 0.0f, screen.scale_x + 0.5f, WHITE);
+			DrawTextureEx(menubuttons[count], button_pos, 0.0f, screen.scale_x + 1.2f, WHITE);
 			if(IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) 
 			{
-				if(!IsSoundPlaying(sfxButton))PlaySoundMulti(sfxButton);
+				int start_time = 0;
+				if(!IsSoundPlaying(sfxButton))
+				{
+					start_time = GetTime();
+					PlaySoundMulti(sfxButton);
+				}
 				switch(count)
 				{
 					case 0:
@@ -180,15 +206,21 @@ void MainMenuState(void)
 						GAME_STATE = CREDITS;
 						break;
 					case 2:
+						GAME_STATE = HIGHSCORE;
+						break;
+					case 3:
+						while(GetTime() - start_time < 0.3f){};
+	
 						UnloadGame();
 						CloseWindow();
+						
 						break;
 						
 				}
 				 
 			}
 		} else {
-			DrawTextureEx(menubuttons[count], button_pos, 0.0f, screen.scale_x + 0.4f, WHITE);
+			DrawTextureEx(menubuttons[count], button_pos, 0.0f, screen.scale_x + 1.1f, WHITE);
 		}
 		
 	}
@@ -196,7 +228,149 @@ void MainMenuState(void)
 }
 void GameOverState(void)
 {
+	Vector2 spacebarposition = (Vector2){(screen.virtual_width / 2 - spacebarlogo.width) * screen.scale_x - 100.0f, (screen.virtual_height / 2) * screen.scale_y + 150};
+	Vector2 enterbuttonposition = (Vector2){(screen.virtual_width / 2 - enterbuttonlogo.width) * screen.scale_x - 100.0f, (screen.virtual_height / 2) * screen.scale_y + 200};
+	const char *scoreText = TextFormat("Score: %d", player.score);
 	
+	Rectangle textBox = {spacebarposition.x + 10, spacebarposition.y - 200, 275, 50};
+	bool mouseOnText = false;
+	
+	if (CheckCollisionPointRec(GetMousePosition(), textBox)) mouseOnText = true;
+	else mouseOnText = false;
+	
+	if (mouseOnText)
+	{
+		SetMouseCursor(MOUSE_CURSOR_IBEAM);
+		int key = GetCharPressed();
+		
+		while (key > 0)
+		{
+			
+			if ((key > 32) && (key <= 125) && (letterCount < MAX_NAME_LENGTH))
+			{
+				player.name[letterCount] = (char)key;
+				letterCount++;
+			}
+
+			key = GetCharPressed();
+		}
+
+		if (IsKeyPressed(KEY_BACKSPACE))
+		{
+			letterCount--;
+			if (letterCount < 0) letterCount = 0;
+			player.name[letterCount] = '\0';
+		}
+
+		if (IsKeyPressed(KEY_ENTER) && letterCount > 1)
+		{
+			addScore("scores.txt", player.name, player.score);
+			printf("%s", player.name);
+			GAME_STATE = HIGHSCORE;
+		}
+	}
+	else SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+	
+	if(IsKeyPressed(KEY_SPACE))
+	{
+		StopSoundMulti();
+		UnloadGame();
+		InitGame();
+		GAME_STATE = ACTIVE;
+	} else if (IsKeyPressed(KEY_ENTER))
+	{
+		StopSoundMulti();
+		UnloadGame();
+		InitGame();
+		GAME_STATE = MENU;
+	}
+	
+	BeginDrawing();
+	ClearBackground(RAYWHITE);
+	DrawText("GAME OVER", (screen.virtual_width / 2 - MeasureText("GAME OVER", 60)) * screen.scale_x - 30.0f, (screen.virtual_height / 2 - MeasureText("GAME OVER", 60)) * screen.scale_y, 60, MAROON);
+	DrawText(scoreText, (screen.virtual_width / 2 - MeasureText(scoreText, 30)) * screen.scale_x - 30.0f, (screen.virtual_height / 2) * screen.scale_y + 50, 30, GOLD);
+	DrawTextureEx(spacebarlogo, spacebarposition, 0.0f, screen.scale_x + 0.5f, WHITE);
+	DrawText("Play again.", spacebarposition.x + spacebarlogo.width + 50.0f, spacebarposition.y, 30, LIGHTGRAY);
+	DrawTextureEx(enterbuttonlogo, enterbuttonposition, 0.0f, screen.scale_x + 0.5f, WHITE);
+	DrawText("Main menu.", spacebarposition.x + spacebarlogo.width + 50.0f , enterbuttonposition.y, 30, LIGHTGRAY);
+	
+	
+	DrawText("Enter Your Name", textBox.x + textBox.width / 2 - 100, textBox.y - 25, 20, BLACK);
+	//DrawText("No Spaces Allowed", textBox.x, textBox.y + 50, 10, ORANGE);
+	
+	DrawRectangleRec(textBox,WHITE);
+	if (mouseOnText) DrawRectangleLines(textBox.x, textBox.y, textBox.width, textBox.height, RED);
+	else DrawRectangleLines(textBox.x, textBox.y, textBox.width, textBox.height, DARKGRAY);
+
+	DrawText(player.name, textBox.x + 5, textBox.y + 8, 40, MAROON);
+
+	if(letterCount < MAX_NAME_LENGTH) 
+	{
+		DrawText(TextFormat("INPUT CHARS: %i/%i", letterCount, MAX_NAME_LENGTH), textBox.x, textBox.y + textBox.height + 10, 15, LIME);
+	} else 
+	{
+		DrawText(TextFormat("INPUT CHARS: %i/%i", letterCount, MAX_NAME_LENGTH), textBox.x, textBox.y + textBox.height + 10, 15, RED);
+	}
+
+	if (mouseOnText) DrawText(TextFormat("Press Enter To Save"), textBox.x + 50, textBox.y + textBox.height + 100, 15, BLACK);
+
+	if (mouseOnText)
+	{
+		if (letterCount < MAX_NAME_LENGTH)
+		{
+
+			if (((framesCounter/20)%2) == 0) DrawText("_", textBox.x + 8 + MeasureText(player.name, 40), textBox.y + 12, 40, MAROON);
+		}
+		else DrawText("Press BACKSPACE to delete chars...", 290, 430, 17, RED);
+	}
+
+
+
+	EndDrawing();
+}
+void WinState(void)
+{
+	Vector2 spacebarposition = (Vector2){(screen.virtual_width / 2 - spacebarlogo.width) * screen.scale_x - 100.0f, (screen.virtual_height / 2) * screen.scale_y + 150};
+	Vector2 enterbuttonposition = (Vector2){(screen.virtual_width / 2 - enterbuttonlogo.width) * screen.scale_x - 100.0f, (screen.virtual_height / 2) * screen.scale_y + 200};
+	const char *scoreText = FormatText("Score: %d", player.score);
+	
+	Rectangle textBox = {spacebarposition.x + 10, spacebarposition.y - 200, 275, 50};
+	bool mouseOnText = false;
+	
+	if (CheckCollisionPointRec(GetMousePosition(), textBox)) mouseOnText = true;
+	else mouseOnText = false;
+	
+	if (mouseOnText)
+	{
+		SetMouseCursor(MOUSE_CURSOR_IBEAM);
+		int key = GetCharPressed();
+		while (key > 0)
+		{
+			
+			if ((key > 32) && (key <= 125) && (letterCount < MAX_NAME_LENGTH))
+			{
+				player.name[letterCount] = (char)key;
+				letterCount++;
+			}
+
+			key = GetCharPressed();
+		}
+
+		if (IsKeyPressed(KEY_BACKSPACE))
+		{
+			letterCount--;
+			if (letterCount < 0) letterCount = 0;
+			player.name[letterCount] = '\0';
+		}
+
+		if (IsKeyPressed(KEY_ENTER) && letterCount > 1)
+		{
+			addScore("scores.txt", player.name, player.score);
+			printf("%s", player.name);
+			GAME_STATE = HIGHSCORE;
+		}
+	}
+	else SetMouseCursor(MOUSE_CURSOR_DEFAULT);
 	
 	if(IsKeyPressed(KEY_SPACE))
 	{
@@ -213,12 +387,45 @@ void GameOverState(void)
 	}
 	BeginDrawing();
 	ClearBackground(RAYWHITE);
-	DrawText("GAME OVER", (screen.virtual_width / 2 - MeasureText("GAME OVER", 50)) * screen.scale_x - 30.0f, (screen.virtual_height / 2 - MeasureText("GAME OVER", 50)) * screen.scale_y, 50, RED);
-	DrawText("Press the spacebar key to play again.", (screen.virtual_width / 2 - MeasureText("Press the spacebar key to play again.", 30)) * screen.scale_x - 30.0f, (screen.virtual_height / 2) * screen.scale_y + 100, 30, RED);
-	DrawText("Press the enter key to return to the main menu.", (screen.virtual_width / 2 - MeasureText("Press the enter key to return to the main menu.", 25)) * screen.scale_x - 30.0f, (screen.virtual_height / 2) * screen.scale_y + 200, 25, RED);
+	DrawText("YOU WIN!", (screen.virtual_width / 2 - MeasureText("YOU WIN!", 60)) * screen.scale_x - 30.0f, (screen.virtual_height / 2 - MeasureText("YOU WIN!", 60)) * screen.scale_y, 60, GOLD);
+	DrawText(scoreText, (screen.virtual_width / 2 - MeasureText(scoreText, 30)) * screen.scale_x - 30.0f, (screen.virtual_height / 2) * screen.scale_y + 50, 30, GOLD);
+	DrawTextureEx(spacebarlogo, spacebarposition, 0.0f, screen.scale_x + 0.5f, WHITE);
+	DrawText("Play again.", spacebarposition.x + spacebarlogo.width + 50.0f, spacebarposition.y, 30, LIGHTGRAY);
+	DrawTextureEx(enterbuttonlogo, enterbuttonposition, 0.0f, screen.scale_x + 0.5f, WHITE);
+	DrawText("Main menu.", spacebarposition.x + spacebarlogo.width + 50.0f , enterbuttonposition.y, 30, LIGHTGRAY);
+	
+	DrawText("Enter Your Name", textBox.x + textBox.width / 2 - 100, textBox.y - 25, 20, BLACK);
+	//DrawText("No Spaces Allowed", textBox.x, textBox.y + 50, 10, ORANGE);
+	
+	DrawRectangleRec(textBox,WHITE);
+	if (mouseOnText) DrawRectangleLines(textBox.x, textBox.y, textBox.width, textBox.height, RED);
+	else DrawRectangleLines(textBox.x, textBox.y, textBox.width, textBox.height, DARKGRAY);
 
+	DrawText(player.name, textBox.x + 5, textBox.y + 8, 40, MAROON);
+
+	if(letterCount < MAX_NAME_LENGTH) 
+	{
+		DrawText(TextFormat("INPUT CHARS: %i/%i", letterCount, MAX_NAME_LENGTH), textBox.x, textBox.y + textBox.height + 10, 15, LIME);
+	} else 
+	{
+		DrawText(TextFormat("INPUT CHARS: %i/%i", letterCount, MAX_NAME_LENGTH), textBox.x, textBox.y + textBox.height + 10, 15, RED);
+	}
+
+	if (mouseOnText) DrawText(TextFormat("Press Enter To Save"), textBox.x + 50, textBox.y + textBox.height + 100, 15, BLACK);
+
+	if (mouseOnText)
+	{
+		if (letterCount < MAX_NAME_LENGTH)
+		{
+
+			if (((framesCounter/20)%2) == 0) DrawText("_", textBox.x + 8 + MeasureText(player.name, 40), textBox.y + 12, 40, MAROON);
+		}
+		else DrawText("Press BACKSPACE to delete chars...", 290, 430, 17, RED);
+	}
+	
 	EndDrawing();
 }
+
 void PauseState(void)
 {
 	if(IsKeyPressed('P')) GAME_STATE = ACTIVE;
@@ -274,7 +481,44 @@ void CreditsState(void) {
     GAME_STATE = MENU;
 
 }
+void HighScoreState(void)
+{
+	Vector2 spacebarposition = (Vector2){(screen.virtual_width / 2 - spacebarlogo.width) * screen.scale_x - 100.0f, (screen.virtual_height / 2) * screen.scale_y + 150};
+	Vector2 enterbuttonposition = (Vector2){(screen.virtual_width / 2 - enterbuttonlogo.width) * screen.scale_x - 100.0f, (screen.virtual_height / 2) * screen.scale_y + 200};
+	//const char *scoreText = TextFormat("Score: %d", player.score);
+	
 
+	if (IsKeyPressed(KEY_ENTER))
+	{
+		StopSoundMulti();
+		UnloadGame();
+		InitGame();
+		GAME_STATE = MENU;
+	}
+	players *highscores = NULL;
+    int count;
+    highscores = GetSortedScores("scores.txt");
+    BeginDrawing();
+    
+    ClearBackground(RAYWHITE);
+    
+
+	DrawText("High Scores", 250, 90, 50, DARKBLUE);
+
+	DrawLine(100, 300, 650, 300, DARKBLUE);
+	
+	DrawText(TextFormat("#Number %40s","Score"), 100, 280, 20, DARKBLUE);
+
+	for(count = 0; count < 5; count++) {
+		
+		DrawText(TextFormat("%d %s", count + 1, highscores[count].name), 100, 350 + 25 * count, 20, DARKBLUE);
+		DrawText(TextFormat("%d", highscores[count].score), 500, 350 + 25 * count, 20, DARKBLUE);
+	}
+	
+	DrawTextureEx(enterbuttonlogo, enterbuttonposition, 0.0f, screen.scale_x + 0.5f, WHITE);
+	DrawText("Main menu.", spacebarposition.x + spacebarlogo.width + 50.0f , enterbuttonposition.y, 30, LIGHTGRAY);
+    EndDrawing();
+}
 void InitGame(void)
 {
 	GAME_STATE = MENU;
@@ -298,7 +542,7 @@ void InitGame(void)
 	ball.lives = 5;
 	//SetMasterVolume(0.5f);
 	
-	const char mapdir[] = "map/1.txt"; 
+	const char mapdir[] = "map/2.txt"; 
 	char * cShape;
 	if((cShape = readfile(mapdir, &MAXBLOCKSX, &MAXBLOCKSY)) == NULL) printf("Error. Could not load the map.\n");
 	block = (blockstruct *)calloc(MAXBLOCKSX * MAXBLOCKSY, sizeof(blockstruct));
@@ -312,22 +556,26 @@ void InitGame(void)
 			arrindex = countY  * MAXBLOCKSX + countX;
 			switch(cShape[arrindex])
 			{
-				case '*':     
+				case '*':
+					block[arrindex].reward = 100;     
 					block[arrindex].active = true;
 					block[arrindex].hitstokill = 2;
 					block[arrindex].colour = RED;
 					break;
 				case '/':
+					block[arrindex].reward = 300;
 					block[arrindex].active = true;
 					block[arrindex].hitstokill = 3;
 					block[arrindex].colour = BLUE;
 					break;
 				case '+':
+					block[arrindex].reward = 500;
 					block[arrindex].active = true;
 					block[arrindex].hitstokill = 4;
 					block[arrindex].colour = PURPLE;
 					break;
 				case '$':
+					block[arrindex].reward = 1000;
 					block[arrindex].active = true;
 					block[arrindex].hitstokill = 5;
 					block[arrindex].colour = LIME;
@@ -354,6 +602,10 @@ void InitGame(void)
 	bat.rect.y = bat_bounds.y;
 	bat.colour = YELLOW;
 	
+	player.score = 0;
+	player.name[0] = '\0';
+	letterCount = 0;
+	
 	min_velocity = 250.0f;
 	max_velocity = min_velocity;
 	
@@ -365,7 +617,10 @@ void InitGame(void)
 	//Loading button textures
 	menubuttons[0] = LoadTexture("textures/playbutton.png");
     menubuttons[1] = LoadTexture("textures/creditsbutton.png");
-    menubuttons[2] = LoadTexture("textures/exitbutton.png");
+    menubuttons[2] = LoadTexture("textures/scoresbutton.png");
+    menubuttons[3] = LoadTexture("textures/exitbutton.png");
+    spacebarlogo = LoadTexture("textures/spacebarlogo.png");
+	enterbuttonlogo = LoadTexture("textures/enterbuttonlogo.png");
     
 	sfxGameOver = LoadSound("sfx/gameoversfx.wav");         // Load WAV audio file
 	sfxButton = LoadSound("sfx/buttonsfx.wav");
@@ -462,6 +717,7 @@ void UpdateGame(void)
 	{
 		ball.velocity.y = (ball.velocity.y >= 0) ? min_velocity: -min_velocity;
 	}
+	
 	//This code stops the ball from speeding up too much
 	if(fabs(ball.velocity.x) > max_velocity)
 	{
@@ -476,12 +732,14 @@ void UpdateGame(void)
 	
 	if (((ball.rect.x + ball.rect.width) >= screen.width) || ((ball.rect.x) <= 0)) 
 	{
-		//if(!IsSoundPlaying(sfxWallCollision)) PlaySound(sfxWallCollision);
+		SetSoundVolume(sfxWallCollision, mapf(ball.velocity.x, 250.0f, max_velocity + 50.0f, 0.075f, 0.1f));
+		PlaySound(sfxWallCollision);
 		ball.velocity.x *= -1.0f;
 	}
     if ((ball.rect.y) <= 0)
 	{
-		//if(!IsSoundPlaying(sfxWallCollision)) PlaySound(sfxWallCollision);
+		SetSoundVolume(sfxWallCollision, mapf(ball.velocity.y, 250.0f, max_velocity + 50.0f, 0.05f, 0.1f));
+		PlaySound(sfxWallCollision);
 		ball.velocity.y *= -1.0f;
 	}
     if ((ball.rect.y + ball.rect.height) >= screen.height)
@@ -517,7 +775,8 @@ void UpdateGame(void)
 				switch(block[arrindex].hitstokill)
 				{
 					case -1:
-						--active_blocks_count; 
+						--active_blocks_count;
+						player.score += block[arrindex].reward;
 						block[arrindex].active = false;
 						break;
 					case 1:
@@ -561,21 +820,25 @@ void UpdateGame(void)
 	
 	if(round_time > max_time) GAME_STATE = GAMEOVER;
 	if(ball.lives <= 0) GAME_STATE = GAMEOVER;
-    if(active_blocks_count == 0) GAME_STATE = GAMEOVER;
+    if(active_blocks_count == 0) 
+	{
+		GAME_STATE = YOUWIN;
+	}
     if(GAME_STATE == GAMEOVER) PlaySoundMulti(sfxGameOver);
 }
 
 void DrawGame(void){
 	
 	int countY, countX;
-	const char * ballVelocity = TextFormat("X = %2f Y = %2f", ball.velocity.x, ball.velocity.y);
-	float timeLeft = (max_time - round_time) / 60;
-	const char * timeLeftText = TextFormat("Time Left: %.2f Blocksleft = %d", timeLeft, active_blocks_count);
+	const char * scoreText = TextFormat("Score: %d", player.score);
+	//const char * ballVelocity = TextFormat("X = %2f Y = %2f", ball.velocity.x, ball.velocity.y);
+	//float timeLeft = (max_time - round_time) / 60;
+	//const char * timeLeftText = TextFormat("Time Left: %.2f Blocksleft = %d", timeLeft, active_blocks_count);
 	const char * ballLivesText = TextFormat("%d", ball.lives); //Assumes total number of lives are less than 10 
 	BeginDrawing();
 	ClearBackground(RAYWHITE);
-	DrawText(timeLeftText, screen.width - MeasureText(timeLeftText, 20) - 10, 10, 20, RED);
-	DrawText(ballVelocity, ball.rect.x + 10.0f, ball.rect.y, 10, GREEN);
+	//DrawText(timeLeftText, screen.width - MeasureText(timeLeftText, 20) - 10, 10, 20, RED);
+	//DrawText(ballVelocity, ball.rect.x + 10.0f, ball.rect.y, 10, GREEN);
 	DrawText(ballLivesText, screen.width - 40, screen.height - 40, 40, RED);
 	DrawCircle(ball.rect.x + ball.rect.width / 2 , ball.rect.y + ball.rect.height / 2, ball.rect.width / 2, ball.colour);
 	
@@ -595,13 +858,15 @@ void DrawGame(void){
 	
 	DrawRectangle(bat.rect.x, bat.rect.y, bat.rect.width, bat.rect.height, bat.colour);	
 	
-	DrawFPS(10, 10);
+	DrawText(scoreText, 10, 10, 30, GOLD);
 	EndDrawing();
 }
 void UnloadGame(void){
 	//Unload button textures
 	int count;
-	for(count = 0; count < 3; count++) UnloadTexture(menubuttons[count]);
+	for(count = 0; count < 4; count++) UnloadTexture(menubuttons[count]);
+	UnloadTexture(spacebarlogo);
+	UnloadTexture(enterbuttonlogo);
 	UnloadSound(sfxGameOver);
 	UnloadSound(sfxButton);
 	UnloadSound(sfxWallCollision);
@@ -703,7 +968,17 @@ int compare(const void *p1, const void *p2)
       return 0;
 }
 
+int compareScores(const void *s1,const void *s2) 
+{
+    if (((players*)s1)->score > ((players*)s2)->score ) return -1;
+    if (((players*)s1)->score == ((players*)s2)->score  ) return 0;
+    return 1;
+}
 
+float mapf(float x, float in_min, float in_max, float out_min, float out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 
 
 
@@ -794,4 +1069,54 @@ void findfileDim(FILE *fptr, int * chars_in_line, int *total_num_lines)
 	rewind(fptr);
 	*chars_in_line = length;
 	*total_num_lines = height;
+}
+
+players* GetSortedScores(const char * dir) {
+	int i = 1, j = 0;
+	char buffer[50];
+	
+	FILE *fptr ;
+	
+	if((fptr = fopen(dir, "r")) == NULL){
+		printf("Score file not found. \n");
+		return NULL;
+	}
+	fgets(buffer, 50, fptr);
+	while(!feof(fptr)) 
+	{
+		fgets(buffer, 50, fptr);
+		++i;
+	}
+	
+	
+	players *sc = (players *) malloc(i * sizeof(players));
+	players *p = sc;
+	
+	fseek(fptr, 0, SEEK_SET);
+	fgets(buffer, 50, fptr);
+	
+	while(!feof(fptr)) 
+	{
+		p = sc + j;
+		sscanf(buffer,"%s %d", p->name, &p->score);
+		fgets(buffer, 50, fptr);
+		++j;
+	}
+	
+	p = sc + j;
+	sscanf(buffer, "%s %d", p->name, &p->score);
+	
+	fclose(fptr);
+	
+	qsort(sc, j + 1, sizeof(players), compareScores);
+	
+	return sc;
+}
+
+void addScore(const char * dir, char * name, int score) {
+  
+  FILE *fptr;
+  if((fptr = fopen(dir, "a")) == NULL) printf("Could not find the score file.");
+  fprintf_s(fptr, "\n%s %d", name, score);
+  fclose(fptr);
 }
