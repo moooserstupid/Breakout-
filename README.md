@@ -12,6 +12,8 @@ Bu proje Marmara Üniversitesi Teknoloji Fakültesi Bilgisayar Mühendisliği Bi
 170419927 Okul numaralı Esameldin M.K. BASHIR tarafından grup halinde hazırlanmıştır.
 
 
+
+
 Projenin incelenmesi istenen ödev olarak kabul edilen kodları "main.c" adlı dosyada bulunmaktadır.
 
 
