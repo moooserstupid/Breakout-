@@ -3,11 +3,11 @@
 
 Bu proje Marmara Üniversitesi Teknoloji Fakültesi Bilgisayar Mühendisliği Bilgisayar Programlama I dersinin dönem projesi görevi olarak;
 
-170419925 Okul numaralı Ali ASGHAR,
+170419926 Okul numaralı Ali ASGHAR,
 
 170419025 Okul numaralı Ali AŞKAROĞLU,
 
-170419926 Okul numaralı İbrahim S. KEDIR,
+170419925 Okul numaralı İbrahim S. KEDIR,
 
 170419927 Okul numaralı Esameldin M.K. BASHIR tarafından grup halinde hazırlanmıştır.
 
